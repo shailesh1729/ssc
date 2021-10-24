@@ -40,8 +40,6 @@ class Row(NamedTuple):
     "Subspace preservation error"
     spr_perc : float
     "Percentage of subspace preserving representations"
-    connectivity: int
-    """Graph connectivity"""
     runtime: float
     """Time taken for whole computation"""
     rep_time: float
@@ -57,7 +55,7 @@ class Row(NamedTuple):
             f"num_points {self.num_points} num_missed : {self.num_missed}",
             f"error {self.error:.2f} acc : {self.acc:.2f}",
             f"spr_error {self.spr_error:.2f} spr_perc : {self.spr_perc:.1f}%%",
-            f"connectivity {self.connectivity:.2f} runtime : {self.runtime:.2f} sec",
+            f"run_time : {self.runtime:.2f} sec",
             f"rep_time {self.rep_time:.2f} sec cluster_time : {self.cluster_time:.2f} sec",
             ]:
             s.append(x.rstrip())
@@ -101,25 +99,24 @@ def bench_subspace_preservation(key, solver, experiment_name):
             skeys = random.split(tkey, 5)
             bases = crdata.random_subspaces_jit(skeys[0], M, D, K)
             cluster_sizes = jnp.ones(K, dtype=int) * S
-            X = crdata.uniform_points_on_subspaces(skeys[1], bases, S)
+            X = crdata.uniform_points_on_subspaces_jit(skeys[1], bases, int(S))
             true_labels = jnp.repeat(jnp.arange(K), S)
             start_time = time.perf_counter()
             # Build representation of each point in terms of other points 
             Z, I, R = solver(X, D)
             # Combine values and indices to form full representation
-            Z_full = ssc.sparse_to_full_rep(Z, I)
+            Z_sp = ssc.sparse_to_bcoo(Z, I)
             # Build the affinity matrix
-            affinity = abs(Z_full) + abs(Z_full).T
+            affinity = ssc.rep_to_affinity(Z_sp)
             rep_time = time.perf_counter()
             # Perform the spectral clustering on the affinity matrix
-            res = spectral.normalized_symmetric_fast_k_jit(keys[2], affinity, K)
+            res = spectral.normalized_symmetric_sparse_fast_k_jit(keys[2], affinity, K)
             end_time = time.perf_counter()
             runtime=end_time-start_time # in seconds
             # Predicted cluster labels
             pred_labels = res.assignment
-            connectivity = res.connectivity
-            clust_err = cluster.clustering_error(true_labels, pred_labels)
-            spr_stats = ssc.subspace_preservation_stats(Z_full, true_labels)
+            clust_err = cluster.clustering_error_k(true_labels, pred_labels, K)
+            spr_stats = ssc.sparse_subspace_preservation_stats_jit(Z, I, true_labels)
             # summarized information
             row = Row(r=r, t=tt, M=M, D=D, K=K, S=S, 
                 num_points=len(true_labels),
@@ -128,7 +125,7 @@ def bench_subspace_preservation(key, solver, experiment_name):
                 acc=1-clust_err.error,
                 spr_error=spr_stats.spr_error,
                 spr_perc=spr_stats.spr_perc,
-                connectivity=connectivity, runtime=runtime,
+                runtime=runtime,
                 rep_time=rep_time-start_time,
                 cluster_time=end_time-rep_time)
             print(row)
