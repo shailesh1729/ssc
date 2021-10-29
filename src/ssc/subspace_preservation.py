@@ -70,11 +70,10 @@ def bench_subspace_preservation(key, solver, experiment_name):
     #num_points_per_cluster_list = jnp.array([30, 55, 98])
     # signal density levels
     rhos = jnp.round(5**jnp.arange(1, 5, 0.4))
-    print(rhos)
     # Number of experiments
-    R = len(rhos)
+    R = len(num_points_per_cluster_list)
     # Number of trials per configuration
-    num_trials = 20
+    num_trials = 50
     print(f"Number of experiments: {R}, trials: {num_trials}")
     keys = random.split(key, R)
     # Ambient space dimension
